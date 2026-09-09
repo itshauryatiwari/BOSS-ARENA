@@ -1,0 +1,36 @@
+{
+  "group_id": "ee12dbd0-cd9a-4d07-9ec9-11cae390cbc1",
+  "states": [
+    {
+      "character": {
+        "id": "f2939175-1d92-4e2a-9525-66ffa13932ce",
+        "name": "Idle",
+        "prompt": "i have created this character i want this character in a 8 directional character sprite",
+        "size": {
+          "width": 32,
+          "height": 32
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "low top-down",
+        "created_at": "2026-09-05T14:18:14.494635+00:00"
+      },
+      "folder": "Idle",
+      "frames": {
+        "rotations": {
+          "south": "Idle/rotations/south.png",
+          "south-east": "Idle/rotations/south-east.png",
+          "east": "Idle/rotations/east.png",
+          "north-east": "Idle/rotations/north-east.png",
+          "north": "Idle/rotations/north.png",
+          "north-west": "Idle/rotations/north-west.png",
+          "west": "Idle/rotations/west.png",
+          "south-west": "Idle/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    }
+  ],
+  "export_version": "3.1",
+  "export_date": "2026-09-05T14:23:15.898253"
+}
