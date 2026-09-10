@@ -202,29 +202,28 @@ class Player:
         self.attack_has_hit = False
         return True
 
-    def get_attack_hitbox(self) -> pygame.Rect | None:
-        """Return the active rectangular hitbox for the current sword swing."""
+    def get_attack_arc(self) -> tuple[pygame.Vector2, float, float, float] | None:
+        """Return the current sword arc as center, angle, reach, and half-width."""
         if self.attack_timer <= 0.0:
             return None
 
-        direction_vectors = {
-            "north": pygame.Vector2(0, -1),
-            "north-east": pygame.Vector2(1, -1).normalize(),
-            "east": pygame.Vector2(1, 0),
-            "south-east": pygame.Vector2(1, 1).normalize(),
-            "south": pygame.Vector2(0, 1),
-            "south-west": pygame.Vector2(-1, 1).normalize(),
-            "west": pygame.Vector2(-1, 0),
-            "north-west": pygame.Vector2(-1, -1).normalize(),
+        direction_angles = {
+            "east": 0.0,
+            "north-east": 45.0,
+            "north": 90.0,
+            "north-west": 135.0,
+            "west": 180.0,
+            "south-west": 225.0,
+            "south": 270.0,
+            "south-east": 315.0,
         }
-        direction = direction_vectors[self.facing_direction]
-        hitbox_center = self.position + direction * 18
-        return pygame.Rect(
-            round(hitbox_center.x - 6),
-            round(hitbox_center.y - 12),
-            12,
-            24,
-        )
+        progress = 1.0 - self.attack_timer / self.attack_duration
+        if progress < 0.15 or progress > 0.85:
+            return None
+
+        swing_progress = (progress - 0.15) / 0.70
+        angle = direction_angles[self.facing_direction] - 55.0 + 110.0 * swing_progress
+        return self.position, angle, 23.0, 18.0
 
     @property
     def collision_ellipse(self) -> tuple[pygame.Vector2, pygame.Vector2]:

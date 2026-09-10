@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pygame
@@ -101,13 +102,13 @@ class Game:
         if self.player.attack_has_hit:
             return
 
-        attack_hitbox = self.player.get_attack_hitbox()
-        if attack_hitbox is None:
+        attack_arc = self.player.get_attack_arc()
+        if attack_arc is None:
             return
 
         hit_registered = False
-        if self.dummy.is_alive and self._ellipses_overlap(
-            attack_hitbox,
+        if self.dummy.is_alive and self._arc_overlaps_ellipse(
+            attack_arc,
             self.dummy.collision_ellipse,
         ):
             dealt_damage = self.dummy.take_damage(self.player.attack_damage)
@@ -115,8 +116,8 @@ class Game:
                 self.damage_feedback.add_damage(self.dummy.position, dealt_damage)
             hit_registered = True
 
-        if self.attacking_dummy.is_alive and self._ellipses_overlap(
-            attack_hitbox,
+        if self.attacking_dummy.is_alive and self._arc_overlaps_ellipse(
+            attack_arc,
             self.attacking_dummy.collision_ellipse,
         ):
             dealt_damage = self.attacking_dummy.take_damage(self.player.attack_damage)
@@ -131,9 +132,9 @@ class Game:
         if not self.attacking_dummy.is_alive or self.attacking_dummy.attack_has_hit:
             return
 
-        attack_hitbox = self.attacking_dummy.get_attack_hitbox()
-        if attack_hitbox is not None and self._ellipses_overlap(
-            attack_hitbox,
+        attack_arc = self.attacking_dummy.get_attack_arc()
+        if attack_arc is not None and self._arc_overlaps_ellipse(
+            attack_arc,
             self.player.collision_ellipse,
         ):
             dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
@@ -142,26 +143,29 @@ class Game:
             self.attacking_dummy.attack_has_hit = True
 
     @staticmethod
-    def _ellipses_overlap(
-        first_shape: pygame.Rect | tuple[pygame.Vector2, pygame.Vector2],
-        second_shape: pygame.Rect | tuple[pygame.Vector2, pygame.Vector2],
+    def _arc_overlaps_ellipse(
+        arc: tuple[pygame.Vector2, float, float, float],
+        ellipse: tuple[pygame.Vector2, pygame.Vector2],
     ) -> bool:
-        """Return overlap for a rectangular attack and an oval body."""
-        if isinstance(first_shape, pygame.Rect):
-            rectangle = first_shape
-            ellipse_position, ellipse_radii = second_shape
-        else:
-            ellipse_position, ellipse_radii = first_shape
-            rectangle = second_shape
-
+        """Return whether an active sword arc reaches an oval body collider."""
+        arc_center, arc_angle, reach, half_width = arc
+        ellipse_position, ellipse_radii = ellipse
         if ellipse_radii.x <= 0 or ellipse_radii.y <= 0:
             return False
 
-        nearest_x = max(rectangle.left, min(ellipse_position.x, rectangle.right))
-        nearest_y = max(rectangle.top, min(ellipse_position.y, rectangle.bottom))
-        normalized_x = (nearest_x - ellipse_position.x) / ellipse_radii.x
-        normalized_y = (nearest_y - ellipse_position.y) / ellipse_radii.y
-        return normalized_x * normalized_x + normalized_y * normalized_y <= 1.0
+        offset = ellipse_position - arc_center
+        distance = offset.length()
+        if distance > reach + max(ellipse_radii.x, ellipse_radii.y):
+            return False
+        if distance <= 0.001:
+            return True
+
+        target_angle = math.degrees(math.atan2(-offset.y, offset.x)) % 360
+        angle_delta = abs((target_angle - arc_angle + 180) % 360 - 180)
+        angular_radius = math.degrees(
+            math.atan2(max(ellipse_radii.x, ellipse_radii.y), max(distance, 0.001))
+        )
+        return angle_delta <= half_width + angular_radius
 
     def _draw(self) -> None:
         self.screen.fill((24, 24, 24))
@@ -221,17 +225,17 @@ class Game:
         player_position, player_radii = self.player.collision_ellipse
         self._draw_world_ellipse(player_position, player_radii, (70, 170, 255), "PLAYER")
 
-        attack_hitbox = self.player.get_attack_hitbox()
-        if attack_hitbox is not None:
-            self._draw_world_rect(attack_hitbox, (245, 80, 70), "ATTACK")
+        attack_arc = self.player.get_attack_arc()
+        if attack_arc is not None:
+            self._draw_world_arc(attack_arc, (245, 80, 70), "ATTACK")
 
         if self.dummy.is_alive:
             self._draw_world_ellipse(*self.dummy.collision_ellipse, (255, 215, 70), "DUMMY")
         if self.attacking_dummy.is_alive:
             self._draw_world_ellipse(*self.attacking_dummy.collision_ellipse, (255, 145, 55), "ATTACKER")
-            attacker_hitbox = self.attacking_dummy.get_attack_hitbox()
-            if attacker_hitbox is not None:
-                self._draw_world_rect(attacker_hitbox, (255, 80, 180), "ENEMY ATTACK")
+            attacker_arc = self.attacking_dummy.get_attack_arc()
+            if attacker_arc is not None:
+                self._draw_world_arc(attacker_arc, (255, 80, 180), "ENEMY ATTACK")
 
         debug_text = self.debug_font.render(
             "F3: hide collision boxes",
@@ -285,6 +289,32 @@ class Game:
                 round(screen_position.x - label_surface.get_width() / 2),
                 screen_rect.top - label_surface.get_height(),
             ),
+        )
+
+    def _draw_world_arc(
+        self,
+        arc: tuple[pygame.Vector2, float, float, float],
+        color: tuple[int, int, int],
+        label: str,
+    ) -> None:
+        world_position, angle, reach, half_width = arc
+        screen_position = self.camera.world_to_screen(world_position)
+        start_angle = math.radians(angle - half_width)
+        end_angle = math.radians(angle + half_width)
+        points = [(round(screen_position.x), round(screen_position.y))]
+        for step in range(13):
+            current_angle = start_angle + (end_angle - start_angle) * step / 12
+            world_point = world_position + pygame.Vector2(
+                math.cos(current_angle) * reach,
+                -math.sin(current_angle) * reach,
+            )
+            screen_point = self.camera.world_to_screen(world_point)
+            points.append((round(screen_point.x), round(screen_point.y)))
+        pygame.draw.lines(self.screen, color, False, points, max(1, round(self.camera.zoom)))
+        label_surface = self.debug_font.render(label, True, color)
+        self.screen.blit(
+            label_surface,
+            (round(screen_position.x), round(screen_position.y - label_surface.get_height())),
         )
 
     def _draw_tiled_arena(self) -> None:
