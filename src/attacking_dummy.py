@@ -25,6 +25,7 @@ class AttackingDummy(Dummy):
         self.attack_cooldown_timer = self.attack_interval
         self.attack_has_hit = False
         self.sword_hand_sprites = self._load_sword_hand_sprites(assets_directory)
+        self.sword_swing_sprites = self._load_sword_swing_sprites(assets_directory)
 
     def _load_sword_hand_sprites(self, assets_directory: Path) -> dict[str, pygame.Surface]:
         spritesheet_path = assets_directory / "player" / "sword_hands_sheet.png"
@@ -65,6 +66,28 @@ class AttackingDummy(Dummy):
         )
         self.facing_direction = direction_order[direction_index]
 
+    def _load_sword_swing_sprites(self, assets_directory: Path) -> dict[str, list[pygame.Surface]]:
+        """Crop four 64x64 sword-swing frames for each of the eight directions."""
+        spritesheet_path = assets_directory / "player" / "swordswing.png"
+        spritesheet = pygame.image.load(spritesheet_path).convert_alpha()
+        frame_size = 64
+        swing_sprites: dict[str, list[pygame.Surface]] = {}
+
+        for row, direction in enumerate(DIRECTIONS):
+            swing_sprites[direction] = []
+            for column in range(4):
+                frame_rect = pygame.Rect(
+                    column * frame_size,
+                    row * frame_size,
+                    frame_size,
+                    frame_size,
+                )
+                swing_sprites[direction].append(
+                    spritesheet.subsurface(frame_rect).copy()
+                )
+
+        return swing_sprites
+
     def update(self, delta_time: float, target_position: pygame.Vector2) -> None:
         super().update(delta_time)
         self._face_target(target_position)
@@ -92,30 +115,52 @@ class AttackingDummy(Dummy):
         }
         direction = direction_vectors[self.facing_direction]
         hitbox_center = self.position + direction * 18
-        hitbox_size = 12
         return pygame.Rect(
-            round(hitbox_center.x - hitbox_size / 2),
-            round(hitbox_center.y - hitbox_size / 2),
-            hitbox_size,
-            hitbox_size,
+            round(hitbox_center.x - 6),
+            round(hitbox_center.y - 12),
+            12,
+            24,
         )
 
     def draw(self, surface: pygame.Surface, camera) -> None:
         super().draw(surface, camera)
         screen_position = camera.world_to_screen(self.position)
         zoom = camera.zoom
-        sword_hands = self.sword_hand_sprites[self.facing_direction]
-        if self.hurt_flash_timer > 0.0:
-            sword_hands = pygame.mask.from_surface(sword_hands).to_surface(
-                setcolor=(255, 70, 70, 235),
-                unsetcolor=(0, 0, 0, 0),
+
+        if self.attack_timer > 0.0:
+            elapsed_attack_time = self.attack_duration - self.attack_timer
+            swing_frame_index = min(
+                3,
+                int((elapsed_attack_time / self.attack_duration) * 4),
             )
-        scaled_sword_hands = pygame.transform.scale(
-            sword_hands,
-            (
-                round(sword_hands.get_width() * zoom),
-                round(sword_hands.get_height() * zoom),
-            ),
-        )
-        draw_position = screen_position - pygame.Vector2(scaled_sword_hands.get_size()) / 2
-        surface.blit(scaled_sword_hands, (round(draw_position.x), round(draw_position.y)))
+            sword_swing = self.sword_swing_sprites[self.facing_direction][swing_frame_index]
+            if self.hurt_flash_timer > 0.0:
+                sword_swing = pygame.mask.from_surface(sword_swing).to_surface(
+                    setcolor=(255, 70, 70, 235),
+                    unsetcolor=(0, 0, 0, 0),
+                )
+            scaled_sword_swing = pygame.transform.scale(
+                sword_swing,
+                (
+                    round(sword_swing.get_width() * zoom),
+                    round(sword_swing.get_height() * zoom),
+                ),
+            )
+            draw_position = screen_position - pygame.Vector2(scaled_sword_swing.get_size()) / 2
+            surface.blit(scaled_sword_swing, (round(draw_position.x), round(draw_position.y)))
+        else:
+            sword_hands = self.sword_hand_sprites[self.facing_direction]
+            if self.hurt_flash_timer > 0.0:
+                sword_hands = pygame.mask.from_surface(sword_hands).to_surface(
+                    setcolor=(255, 70, 70, 235),
+                    unsetcolor=(0, 0, 0, 0),
+                )
+            scaled_sword_hands = pygame.transform.scale(
+                sword_hands,
+                (
+                    round(sword_hands.get_width() * zoom),
+                    round(sword_hands.get_height() * zoom),
+                ),
+            )
+            draw_position = screen_position - pygame.Vector2(scaled_sword_hands.get_size()) / 2
+            surface.blit(scaled_sword_hands, (round(draw_position.x), round(draw_position.y)))

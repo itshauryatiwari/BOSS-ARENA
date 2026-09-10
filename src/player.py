@@ -25,7 +25,7 @@ class Player:
         self.position = pygame.Vector2(start_position)
         self.facing_direction = "south"
         self.sprite_size = pygame.Vector2(32, 32)
-        self.collision_size = pygame.Vector2(16, 16)
+        self.collision_radii = pygame.Vector2(5.0, 10.0)
         self.speed = 70.0
         self.max_health = 100
         self.health = self.max_health
@@ -203,7 +203,7 @@ class Player:
         return True
 
     def get_attack_hitbox(self) -> pygame.Rect | None:
-        """Return the active forward hitbox for the current sword swing."""
+        """Return the active rectangular hitbox for the current sword swing."""
         if self.attack_timer <= 0.0:
             return None
 
@@ -219,22 +219,26 @@ class Player:
         }
         direction = direction_vectors[self.facing_direction]
         hitbox_center = self.position + direction * 18
-        hitbox_size = 12
         return pygame.Rect(
-            round(hitbox_center.x - hitbox_size / 2),
-            round(hitbox_center.y - hitbox_size / 2),
-            hitbox_size,
-            hitbox_size,
+            round(hitbox_center.x - 6),
+            round(hitbox_center.y - 12),
+            12,
+            24,
         )
 
     @property
+    def collision_ellipse(self) -> tuple[pygame.Vector2, pygame.Vector2]:
+        """Return the player's oval body collision geometry."""
+        return self.position, self.collision_radii
+
+    @property
     def hitbox(self) -> pygame.Rect:
-        """Return the compact player collision box used by debug visualization."""
+        """Return a compatibility rectangle around the circular body collider."""
         return pygame.Rect(
-            round(self.position.x - self.collision_size.x / 2),
-            round(self.position.y - self.collision_size.y / 2),
-            round(self.collision_size.x),
-            round(self.collision_size.y),
+            round(self.position.x - self.collision_radii.x),
+            round(self.position.y - self.collision_radii.y),
+            round(self.collision_radii.x * 2),
+            round(self.collision_radii.y * 2),
         )
 
     def start_block(self) -> bool:
@@ -368,4 +372,3 @@ class Player:
             scaled_shield,
             (round(shield_position.x), round(shield_position.y)),
         )
-

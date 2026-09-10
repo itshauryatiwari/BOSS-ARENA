@@ -17,7 +17,10 @@ class Dummy:
         self.health = max_health
         self.sprite = self._load_sprite(assets_directory)
         self.sprite_size = pygame.Vector2(self.sprite.get_size())
-        self.collision_size = self.sprite_size / 2
+        self.collision_radii = pygame.Vector2(
+            self.sprite_size.x * 0.16,
+            self.sprite_size.y * 0.31,
+        )
         self.hurt_flash_duration = 0.14
         self.hurt_flash_timer = 0.0
 
@@ -27,12 +30,18 @@ class Dummy:
 
     @property
     def hitbox(self) -> pygame.Rect:
+        """Return a compatibility rectangle around the circular body collider."""
         return pygame.Rect(
-            round(self.position.x - self.collision_size.x / 2),
-            round(self.position.y - self.collision_size.y / 2),
-            round(self.collision_size.x),
-            round(self.collision_size.y),
+            round(self.position.x - self.collision_radii.x),
+            round(self.position.y - self.collision_radii.y),
+            round(self.collision_radii.x * 2),
+            round(self.collision_radii.y * 2),
         )
+
+    @property
+    def collision_ellipse(self) -> tuple[pygame.Vector2, pygame.Vector2]:
+        """Return the dummy's oval body collision geometry."""
+        return self.position, self.collision_radii
 
     @property
     def is_alive(self) -> bool:

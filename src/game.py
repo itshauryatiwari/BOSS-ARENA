@@ -97,16 +97,34 @@ class Game:
         self.camera.follow(self.player.position)
 
     def _check_dummy_hit(self) -> None:
-        """Apply one player damage instance per sword swing when the hitbox overlaps."""
-        if not self.dummy.is_alive or self.player.attack_has_hit:
+        """Apply one player damage instance per sword swing to each target."""
+        if self.player.attack_has_hit:
             return
 
         attack_hitbox = self.player.get_attack_hitbox()
-        if attack_hitbox is not None and attack_hitbox.colliderect(self.dummy.hitbox):
+        if attack_hitbox is None:
+            return
+
+        hit_registered = False
+        if self.dummy.is_alive and self._ellipses_overlap(
+            attack_hitbox,
+            self.dummy.collision_ellipse,
+        ):
             dealt_damage = self.dummy.take_damage(self.player.attack_damage)
             if dealt_damage > 0:
                 self.damage_feedback.add_damage(self.dummy.position, dealt_damage)
-            self.player.attack_has_hit = True
+            hit_registered = True
+
+        if self.attacking_dummy.is_alive and self._ellipses_overlap(
+            attack_hitbox,
+            self.attacking_dummy.collision_ellipse,
+        ):
+            dealt_damage = self.attacking_dummy.take_damage(self.player.attack_damage)
+            if dealt_damage > 0:
+                self.damage_feedback.add_damage(self.attacking_dummy.position, dealt_damage)
+            hit_registered = True
+
+        self.player.attack_has_hit = hit_registered
 
     def _check_attacking_dummy_hit(self) -> None:
         """Apply one attacking-dummy hit to the player per enemy swing."""
@@ -114,11 +132,36 @@ class Game:
             return
 
         attack_hitbox = self.attacking_dummy.get_attack_hitbox()
-        if attack_hitbox is not None and attack_hitbox.colliderect(self.player.hitbox):
+        if attack_hitbox is not None and self._ellipses_overlap(
+            attack_hitbox,
+            self.player.collision_ellipse,
+        ):
             dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
             if dealt_damage > 0:
                 self.damage_feedback.add_damage(self.player.position, dealt_damage)
             self.attacking_dummy.attack_has_hit = True
+
+    @staticmethod
+    def _ellipses_overlap(
+        first_shape: pygame.Rect | tuple[pygame.Vector2, pygame.Vector2],
+        second_shape: pygame.Rect | tuple[pygame.Vector2, pygame.Vector2],
+    ) -> bool:
+        """Return overlap for a rectangular attack and an oval body."""
+        if isinstance(first_shape, pygame.Rect):
+            rectangle = first_shape
+            ellipse_position, ellipse_radii = second_shape
+        else:
+            ellipse_position, ellipse_radii = first_shape
+            rectangle = second_shape
+
+        if ellipse_radii.x <= 0 or ellipse_radii.y <= 0:
+            return False
+
+        nearest_x = max(rectangle.left, min(ellipse_position.x, rectangle.right))
+        nearest_y = max(rectangle.top, min(ellipse_position.y, rectangle.bottom))
+        normalized_x = (nearest_x - ellipse_position.x) / ellipse_radii.x
+        normalized_y = (nearest_y - ellipse_position.y) / ellipse_radii.y
+        return normalized_x * normalized_x + normalized_y * normalized_y <= 1.0
 
     def _draw(self) -> None:
         self.screen.fill((24, 24, 24))
@@ -175,17 +218,17 @@ class Game:
 
     def _draw_debug_collision_boxes(self) -> None:
         """Draw collision geometry for player combat testing."""
-        player_hitbox = self.player.hitbox
-        self._draw_world_rect(player_hitbox, (70, 170, 255), "PLAYER")
+        player_position, player_radii = self.player.collision_ellipse
+        self._draw_world_ellipse(player_position, player_radii, (70, 170, 255), "PLAYER")
 
         attack_hitbox = self.player.get_attack_hitbox()
         if attack_hitbox is not None:
             self._draw_world_rect(attack_hitbox, (245, 80, 70), "ATTACK")
 
         if self.dummy.is_alive:
-            self._draw_world_rect(self.dummy.hitbox, (255, 215, 70), "DUMMY")
+            self._draw_world_ellipse(*self.dummy.collision_ellipse, (255, 215, 70), "DUMMY")
         if self.attacking_dummy.is_alive:
-            self._draw_world_rect(self.attacking_dummy.hitbox, (255, 145, 55), "ATTACKER")
+            self._draw_world_ellipse(*self.attacking_dummy.collision_ellipse, (255, 145, 55), "ATTACKER")
             attacker_hitbox = self.attacking_dummy.get_attack_hitbox()
             if attacker_hitbox is not None:
                 self._draw_world_rect(attacker_hitbox, (255, 80, 180), "ENEMY ATTACK")
@@ -214,6 +257,35 @@ class Game:
         pygame.draw.rect(self.screen, color, screen_rect, max(1, round(self.camera.zoom)))
         label_surface = self.debug_font.render(label, True, color)
         self.screen.blit(label_surface, (screen_rect.left, screen_rect.top - label_surface.get_height()))
+
+    def _draw_world_ellipse(
+        self,
+        world_position: pygame.Vector2,
+        world_radii: pygame.Vector2,
+        color: tuple[int, int, int],
+        label: str,
+    ) -> None:
+        screen_position = self.camera.world_to_screen(world_position)
+        screen_size = (
+            max(2, round(world_radii.x * 2 * self.camera.zoom)),
+            max(2, round(world_radii.y * 2 * self.camera.zoom)),
+        )
+        screen_rect = pygame.Rect(0, 0, *screen_size)
+        screen_rect.center = (round(screen_position.x), round(screen_position.y))
+        pygame.draw.ellipse(
+            self.screen,
+            color,
+            screen_rect,
+            max(1, round(self.camera.zoom)),
+        )
+        label_surface = self.debug_font.render(label, True, color)
+        self.screen.blit(
+            label_surface,
+            (
+                round(screen_position.x - label_surface.get_width() / 2),
+                screen_rect.top - label_surface.get_height(),
+            ),
+        )
 
     def _draw_tiled_arena(self) -> None:
         tile_width, tile_height = self.floor_tile.get_size()
