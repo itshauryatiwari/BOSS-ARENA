@@ -35,6 +35,7 @@ class Game:
         self.project_directory = Path(__file__).resolve().parent.parent
         self.assets_directory = self.project_directory / "assets"
         self.floor_tile = self._load_floor_tile()
+        self.heart_sprites = self._load_heart_sprites()
 
         self.world_rect = pygame.Rect(0, 0, WORLD_SIZE[0], WORLD_SIZE[1])
         self.player = Player(
@@ -57,6 +58,14 @@ class Game:
     def _load_floor_tile(self) -> pygame.Surface:
         floor_path = self.assets_directory / "tiles" / "floor1.png"
         return pygame.image.load(floor_path).convert()
+
+    def _load_heart_sprites(self) -> dict[str, pygame.Surface]:
+        """Load the full, half, and empty pixel-art heart HUD sprites."""
+        heart_directory = self.assets_directory / "ui"
+        return {
+            state: pygame.image.load(heart_directory / f"heart_{state}.png").convert_alpha()
+            for state in ("full", "half", "empty")
+        }
 
     def run(self) -> None:
         while self.running:
@@ -95,6 +104,7 @@ class Game:
         self.damage_feedback.update(delta_time)
         self._check_dummy_hit()
         self._check_attacking_dummy_hit()
+        self.camera.update_shake(delta_time)
         self.camera.follow(self.player.position)
 
     def _check_dummy_hit(self) -> None:
@@ -140,6 +150,7 @@ class Game:
             dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
             if dealt_damage > 0:
                 self.damage_feedback.add_damage(self.player.position, dealt_damage)
+                self.camera.shake(duration=0.14, strength=3.0)
             self.attacking_dummy.attack_has_hit = True
 
     @staticmethod
@@ -182,43 +193,28 @@ class Game:
         pygame.display.flip()
 
     def _draw_player_hud(self) -> None:
-        """Draw the player's health bar in fixed screen-space coordinates."""
+        """Draw ten Minecraft-style heart slots in fixed screen-space coordinates."""
         margin = 20
-        bar_width = 260
-        bar_height = 24
         label = self.hud_font.render("PLAYER HEALTH", True, (245, 245, 245))
         self.screen.blit(label, (margin, margin))
 
-        bar_rect = pygame.Rect(
-            margin,
-            margin + label.get_height() + 6,
-            bar_width,
-            bar_height,
-        )
-        pygame.draw.rect(self.screen, (45, 18, 18), bar_rect)
+        heart_size = self.heart_sprites["full"].get_width()
+        heart_gap = 2
+        heart_y = margin + label.get_height() + 6
+        health_points = max(0, min(self.player.max_health, self.player.health))
+        hearts = max(1, (self.player.max_health + 9) // 10)
 
-        health_ratio = 0.0
-        if self.player.max_health > 0:
-            health_ratio = max(0.0, min(1.0, self.player.health / self.player.max_health))
-        health_rect = pygame.Rect(
-            bar_rect.left,
-            bar_rect.top,
-            round(bar_rect.width * health_ratio),
-            bar_rect.height,
-        )
-        pygame.draw.rect(self.screen, (205, 48, 48), health_rect)
-        pygame.draw.rect(self.screen, (245, 225, 225), bar_rect, 2)
+        for heart_index in range(hearts):
+            heart_value = health_points - heart_index * 10
+            if heart_value >= 10:
+                state = "full"
+            elif heart_value >= 5:
+                state = "half"
+            else:
+                state = "empty"
 
-        value_text = self.hud_font.render(
-            f"{self.player.health} / {self.player.max_health}",
-            True,
-            (255, 255, 255),
-        )
-        value_position = (
-            bar_rect.centerx - value_text.get_width() // 2,
-            bar_rect.centery - value_text.get_height() // 2,
-        )
-        self.screen.blit(value_text, value_position)
+            heart_x = margin + heart_index * (heart_size + heart_gap)
+            self.screen.blit(self.heart_sprites[state], (heart_x, heart_y))
 
     def _draw_debug_collision_boxes(self) -> None:
         """Draw collision geometry for player combat testing."""
