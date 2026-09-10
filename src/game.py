@@ -147,10 +147,16 @@ class Game:
             attack_arc,
             self.player.collision_ellipse,
         ):
-            dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
-            if dealt_damage > 0:
-                self.damage_feedback.add_damage(self.player.position, dealt_damage)
-                self.camera.shake(duration=0.14, strength=3.0)
+            block_arc = self.player.get_block_arc()
+            is_blocking_attack = block_arc is not None and self._arc_overlaps_ellipse(
+                block_arc,
+                self.attacking_dummy.collision_ellipse,
+            )
+            if not is_blocking_attack:
+                dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
+                if dealt_damage > 0:
+                    self.damage_feedback.add_damage(self.player.position, dealt_damage)
+                    self.camera.shake(duration=0.14, strength=3.0)
             self.attacking_dummy.attack_has_hit = True
 
     @staticmethod
@@ -224,6 +230,10 @@ class Game:
         attack_arc = self.player.get_attack_arc()
         if attack_arc is not None:
             self._draw_world_arc(attack_arc, (245, 80, 70), "ATTACK")
+
+        block_arc = self.player.get_block_arc()
+        if block_arc is not None:
+            self._draw_world_arc(block_arc, (80, 180, 255), "BLOCK")
 
         if self.dummy.is_alive:
             self._draw_world_ellipse(*self.dummy.collision_ellipse, (255, 215, 70), "DUMMY")

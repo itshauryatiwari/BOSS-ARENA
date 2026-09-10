@@ -36,6 +36,7 @@ class Player:
         self.attack_cooldown_duration = 0.36
         self.attack_cooldown_timer = 0.0
         self.attack_has_hit = False
+        self.block_input_held = False
         self.hurt_flash_duration = 0.14
         self.hurt_flash_timer = 0.0
         self.is_moving = False
@@ -242,6 +243,7 @@ class Player:
 
     def start_block(self) -> bool:
         """Enter the blocking state while the right mouse button is held."""
+        self.block_input_held = True
         if self.attack_timer > 0:
             return False
 
@@ -250,8 +252,26 @@ class Player:
 
     def stop_block(self) -> None:
         """Leave the blocking state when the right mouse button is released."""
+        self.block_input_held = False
         if self.state == "BLOCKING":
             self.state = "IDLE"
+
+    def get_block_arc(self) -> tuple[pygame.Vector2, float, float, float] | None:
+        """Return the directional shield arc while the player is blocking."""
+        if self.state != "BLOCKING":
+            return None
+
+        direction_angles = {
+            "east": 0.0,
+            "north-east": 45.0,
+            "north": 90.0,
+            "north-west": 135.0,
+            "west": 180.0,
+            "south-west": 225.0,
+            "south": 270.0,
+            "south-east": 315.0,
+        }
+        return self.position, direction_angles[self.facing_direction], 23.0, 28.0
 
     def update_attack(self, delta_time: float) -> None:
         """Advance attack and cooldown timers without tying them to frame rate."""
@@ -259,7 +279,7 @@ class Player:
         self.attack_cooldown_timer = max(0.0, self.attack_cooldown_timer - delta_time)
 
         if self.attack_timer == 0.0 and self.state == "ATTACKING":
-            self.state = "IDLE"
+            self.state = "BLOCKING" if self.block_input_held else "IDLE"
 
     def update(self, delta_time: float, world_rect: pygame.Rect) -> None:
         """Move the player and advance the walking animation using delta time."""
