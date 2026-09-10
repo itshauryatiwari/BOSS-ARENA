@@ -8,6 +8,8 @@ import pygame
 from src.combat_config import (
     BLOCK_STAMINA_COST,
     MAX_STAMINA,
+    PARRY_STAMINA_REWARD,
+    PARRY_WINDOW,
     ROLL_COOLDOWN,
     ROLL_DISTANCE,
     ROLL_DURATION,
@@ -48,6 +50,8 @@ class Player:
         self.attack_cooldown_timer = 0.0
         self.attack_has_hit = False
         self.block_input_held = False
+        self.parry_timer = 0.0
+        self.parry_visual_timer = 0.0
         self.roll_direction = pygame.Vector2(0, 0)
         self.roll_timer = 0.0
         self.roll_cooldown_timer = 0.0
@@ -62,6 +66,7 @@ class Player:
         self.sword_hand_sprites = self._load_sword_hand_sprites(assets_directory)
         self.sword_swing_sprites = self._load_sword_swing_sprites(assets_directory)
         self.shield_sprites = self._load_shield_sprites(assets_directory)
+        self.parry_sprites = self._load_parry_sprites(assets_directory)
 
     def _load_directional_sprites(self, assets_directory: Path) -> dict[str, pygame.Surface]:
         """Crop the eight 32x32 directional frames from the handless spritesheet."""
@@ -142,6 +147,19 @@ class Player:
 
         return shield_sprites
 
+    def _load_parry_sprites(self, assets_directory: Path) -> dict[str, pygame.Surface]:
+        """Crop one 32x32 directional frame from the parry sheet."""
+        spritesheet_path = assets_directory / "player" / "parry.png"
+        spritesheet = pygame.image.load(spritesheet_path).convert_alpha()
+        frame_size = 32
+        parry_sprites: dict[str, pygame.Surface] = {}
+        for index, direction in enumerate(DIRECTIONS):
+            column = index % 4
+            row = index // 4
+            frame_rect = pygame.Rect(column * frame_size, row * frame_size, frame_size, frame_size)
+            parry_sprites[direction] = spritesheet.subsurface(frame_rect).copy()
+        return parry_sprites
+
     def _load_sword_hand_sprites(self, assets_directory: Path) -> dict[str, pygame.Surface]:
         """Crop the 3-3-2 sword-hands sheet in the agreed direction order."""
         spritesheet_path = assets_directory / "player" / "sword_hands_sheet.png"
@@ -201,6 +219,16 @@ class Player:
             return False
         self.stamina = max(0.0, self.stamina - BLOCK_STAMINA_COST)
         return True
+
+    def register_parry(self) -> None:
+        """Reward a successful parry and briefly show its visual feedback."""
+        self.stamina = min(self.max_stamina, self.stamina + PARRY_STAMINA_REWARD)
+        self.parry_visual_timer = 0.18
+
+    @property
+    def is_parrying(self) -> bool:
+        """Whether the player is inside the precise opening parry window."""
+        return self.state == "BLOCKING" and self.parry_timer > 0.0
 
     def update_stamina(self, delta_time: float) -> None:
         """Regenerate stamina naturally whenever the shield is not raised."""
@@ -305,6 +333,7 @@ class Player:
             return False
 
         self.state = "BLOCKING"
+        self.parry_timer = PARRY_WINDOW
         return True
 
     def stop_block(self) -> None:
@@ -312,6 +341,7 @@ class Player:
         self.block_input_held = False
         if self.state == "BLOCKING":
             self.state = "IDLE"
+        self.parry_timer = 0.0
 
     def get_block_arc(self) -> tuple[pygame.Vector2, float, float, float] | None:
         """Return the directional shield arc while the player is blocking."""
@@ -336,12 +366,18 @@ class Player:
         self.attack_cooldown_timer = max(0.0, self.attack_cooldown_timer - delta_time)
         self.roll_timer = max(0.0, self.roll_timer - delta_time)
         self.roll_cooldown_timer = max(0.0, self.roll_cooldown_timer - delta_time)
+        self.parry_timer = max(0.0, self.parry_timer - delta_time)
+        self.parry_visual_timer = max(0.0, self.parry_visual_timer - delta_time)
 
         if self.attack_timer == 0.0 and self.state == "ATTACKING":
             self.state = "BLOCKING" if self.block_input_held else "IDLE"
+            if self.state == "BLOCKING":
+                self.parry_timer = PARRY_WINDOW
 
         if self.roll_timer == 0.0 and self.state == "ROLLING":
             self.state = "BLOCKING" if self.block_input_held else "IDLE"
+            if self.state == "BLOCKING":
+                self.parry_timer = PARRY_WINDOW
 
     def update(self, delta_time: float, world_rect: pygame.Rect) -> None:
         """Move the player and advance the walking animation using delta time."""
@@ -436,7 +472,15 @@ class Player:
                 (round(hands_position.x), round(hands_position.y)),
             )
 
-        if self.state == "BLOCKING":
+        if self.parry_visual_timer > 0.0:
+            parry = self._apply_hurt_flash(self.parry_sprites[self.facing_direction])
+            scaled_parry = pygame.transform.scale(
+                parry,
+                (round(parry.get_width() * zoom), round(parry.get_height() * zoom)),
+            )
+            parry_position = screen_position - pygame.Vector2(scaled_parry.get_size()) / 2
+            surface.blit(scaled_parry, (round(parry_position.x), round(parry_position.y)))
+        elif self.state == "BLOCKING":
             self._draw_block(surface, screen_position, zoom)
 
     def _draw_block(

@@ -158,8 +158,15 @@ class Game:
                 block_arc,
                 self.attacking_dummy.collision_ellipse,
             )
-            blocked_attack = is_blocking_attack and self.player.consume_block_stamina()
-            if not blocked_attack:
+            successful_parry = is_blocking_attack and self.player.is_parrying
+            if successful_parry:
+                self.player.register_parry()
+                self.camera.shake(duration=0.18, strength=5.0)
+            else:
+                blocked_attack = is_blocking_attack and self.player.consume_block_stamina()
+                if blocked_attack:
+                    self.attacking_dummy.attack_has_hit = True
+                    return
                 dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
                 if dealt_damage > 0:
                     self.damage_feedback.add_damage(self.player.position, dealt_damage)
