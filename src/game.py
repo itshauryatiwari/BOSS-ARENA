@@ -83,6 +83,8 @@ class Game:
                 self.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_F3:
                 self.debug_collision_boxes = not self.debug_collision_boxes
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                self.player.start_roll()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == pygame.BUTTON_LEFT:
                     self.player.start_attack()
@@ -147,12 +149,17 @@ class Game:
             attack_arc,
             self.player.collision_ellipse,
         ):
+            if self.player.is_invulnerable:
+                self.attacking_dummy.attack_has_hit = True
+                return
+
             block_arc = self.player.get_block_arc()
             is_blocking_attack = block_arc is not None and self._arc_overlaps_ellipse(
                 block_arc,
                 self.attacking_dummy.collision_ellipse,
             )
-            if not is_blocking_attack:
+            blocked_attack = is_blocking_attack and self.player.consume_block_stamina()
+            if not blocked_attack:
                 dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
                 if dealt_damage > 0:
                     self.damage_feedback.add_damage(self.player.position, dealt_damage)
@@ -221,6 +228,32 @@ class Game:
 
             heart_x = margin + heart_index * (heart_size + heart_gap)
             self.screen.blit(self.heart_sprites[state], (heart_x, heart_y))
+
+        stamina_label = self.hud_font.render("STAMINA", True, (245, 245, 245))
+        stamina_label_y = heart_y + heart_size + 8
+        self.screen.blit(stamina_label, (margin, stamina_label_y))
+
+        segment_y = stamina_label_y + stamina_label.get_height() + 4
+        segment_width = 56
+        segment_height = 12
+        segment_gap = 4
+        stamina_ratio = 0.0
+        if self.player.max_stamina > 0:
+            stamina_ratio = max(0.0, min(1.0, self.player.stamina / self.player.max_stamina))
+        segment_count = max(1, round(self.player.max_stamina))
+        for segment_index in range(segment_count):
+            segment_x = margin + segment_index * (segment_width + segment_gap)
+            segment_rect = pygame.Rect(segment_x, segment_y, segment_width, segment_height)
+            segment_start = segment_index / segment_count
+            segment_end = (segment_index + 1) / segment_count
+            fill_ratio = max(0.0, min(1.0, (stamina_ratio - segment_start) / (segment_end - segment_start)))
+            pygame.draw.rect(self.screen, (32, 42, 52), segment_rect)
+            pygame.draw.rect(
+                self.screen,
+                (62, 170, 220),
+                pygame.Rect(segment_rect.left, segment_rect.top, round(segment_rect.width * fill_ratio), segment_rect.height),
+            )
+            pygame.draw.rect(self.screen, (210, 235, 245), segment_rect, 1)
 
     def _draw_debug_collision_boxes(self) -> None:
         """Draw collision geometry for player combat testing."""

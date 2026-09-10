@@ -5,6 +5,15 @@ from pathlib import Path
 
 import pygame
 
+from src.combat_config import (
+    BLOCK_STAMINA_COST,
+    MAX_STAMINA,
+    ROLL_COOLDOWN,
+    ROLL_DISTANCE,
+    ROLL_DURATION,
+    STAMINA_REGEN_RATE,
+)
+
 
 DIRECTIONS = (
     "north",
@@ -29,6 +38,8 @@ class Player:
         self.speed = 70.0
         self.max_health = 100
         self.health = self.max_health
+        self.max_stamina = MAX_STAMINA
+        self.stamina = self.max_stamina
         self.attack_damage = 10
         self.state = "IDLE"
         self.attack_duration = 0.24
@@ -37,6 +48,9 @@ class Player:
         self.attack_cooldown_timer = 0.0
         self.attack_has_hit = False
         self.block_input_held = False
+        self.roll_direction = pygame.Vector2(0, 0)
+        self.roll_timer = 0.0
+        self.roll_cooldown_timer = 0.0
         self.hurt_flash_duration = 0.14
         self.hurt_flash_timer = 0.0
         self.is_moving = False
@@ -181,6 +195,21 @@ class Player:
             self.hurt_flash_timer = self.hurt_flash_duration
         return dealt_damage
 
+    def consume_block_stamina(self) -> bool:
+        """Spend stamina for one successfully blocked enemy swing."""
+        if self.stamina < BLOCK_STAMINA_COST:
+            return False
+        self.stamina = max(0.0, self.stamina - BLOCK_STAMINA_COST)
+        return True
+
+    def update_stamina(self, delta_time: float) -> None:
+        """Regenerate stamina naturally whenever the shield is not raised."""
+        if self.state != "BLOCKING":
+            self.stamina = min(
+                self.max_stamina,
+                self.stamina + STAMINA_REGEN_RATE * delta_time,
+            )
+
     def update_hurt(self, delta_time: float) -> None:
         self.hurt_flash_timer = max(0.0, self.hurt_flash_timer - delta_time)
 
@@ -194,7 +223,7 @@ class Player:
 
     def start_attack(self) -> bool:
         """Start one sword swing if the attack is ready."""
-        if self.state == "BLOCKING" or self.attack_cooldown_timer > 0 or self.attack_timer > 0:
+        if self.state in ("BLOCKING", "ROLLING") or self.attack_cooldown_timer > 0 or self.attack_timer > 0:
             return False
 
         self.state = "ATTACKING"
@@ -202,6 +231,34 @@ class Player:
         self.attack_cooldown_timer = self.attack_cooldown_duration
         self.attack_has_hit = False
         return True
+
+    def start_roll(self) -> bool:
+        """Start a directional, cooldown-limited roll."""
+        if self.state in ("ATTACKING", "BLOCKING", "ROLLING") or self.roll_cooldown_timer > 0:
+            return False
+
+        direction_angles = {
+            "east": 0.0,
+            "north-east": 45.0,
+            "north": 90.0,
+            "north-west": 135.0,
+            "west": 180.0,
+            "south-west": 225.0,
+            "south": 270.0,
+            "south-east": 315.0,
+        }
+        angle = math.radians(direction_angles[self.facing_direction])
+        self.roll_direction = pygame.Vector2(math.cos(angle), -math.sin(angle))
+        self.roll_timer = ROLL_DURATION
+        self.roll_cooldown_timer = ROLL_COOLDOWN
+        self.state = "ROLLING"
+        self.attack_has_hit = True
+        return True
+
+    @property
+    def is_invulnerable(self) -> bool:
+        """Whether the player should ignore incoming damage this frame."""
+        return self.state == "ROLLING"
 
     def get_attack_arc(self) -> tuple[pygame.Vector2, float, float, float] | None:
         """Return the current sword arc as center, angle, reach, and half-width."""
@@ -244,7 +301,7 @@ class Player:
     def start_block(self) -> bool:
         """Enter the blocking state while the right mouse button is held."""
         self.block_input_held = True
-        if self.attack_timer > 0:
+        if self.attack_timer > 0 or self.roll_timer > 0:
             return False
 
         self.state = "BLOCKING"
@@ -277,22 +334,33 @@ class Player:
         """Advance attack and cooldown timers without tying them to frame rate."""
         self.attack_timer = max(0.0, self.attack_timer - delta_time)
         self.attack_cooldown_timer = max(0.0, self.attack_cooldown_timer - delta_time)
+        self.roll_timer = max(0.0, self.roll_timer - delta_time)
+        self.roll_cooldown_timer = max(0.0, self.roll_cooldown_timer - delta_time)
 
         if self.attack_timer == 0.0 and self.state == "ATTACKING":
             self.state = "BLOCKING" if self.block_input_held else "IDLE"
 
+        if self.roll_timer == 0.0 and self.state == "ROLLING":
+            self.state = "BLOCKING" if self.block_input_held else "IDLE"
+
     def update(self, delta_time: float, world_rect: pygame.Rect) -> None:
         """Move the player and advance the walking animation using delta time."""
+        was_rolling = self.state == "ROLLING"
         self.update_attack(delta_time)
         self.update_hurt(delta_time)
+        self.update_stamina(delta_time)
         keys = pygame.key.get_pressed()
         movement = pygame.Vector2(
             float(keys[pygame.K_d]) - float(keys[pygame.K_a]),
             float(keys[pygame.K_s]) - float(keys[pygame.K_w]),
         )
-        self.is_moving = movement.length_squared() > 0
+        if was_rolling:
+            self.is_moving = True
+            self.position += self.roll_direction * (ROLL_DISTANCE / ROLL_DURATION) * delta_time
+        else:
+            self.is_moving = movement.length_squared() > 0
 
-        if self.is_moving:
+        if not was_rolling and self.is_moving:
             movement = movement.normalize()
             self.position += movement * self.speed * delta_time
             self.walk_frame_timer += delta_time
