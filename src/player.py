@@ -13,6 +13,8 @@ from src.combat_config import (
     MAX_STAMINA,
     PARRY_STAMINA_REWARD,
     PARRY_WINDOW,
+    PLAYER_ATTACK_COOLDOWN,
+    PLAYER_ATTACK_DURATION,
     ROLL_COOLDOWN,
     ROLL_DISTANCE,
     ROLL_DURATION,
@@ -47,9 +49,9 @@ class Player:
         self.stamina = self.max_stamina
         self.attack_damage = 10
         self.state = "IDLE"
-        self.attack_duration = 0.24
+        self.attack_duration = PLAYER_ATTACK_DURATION
         self.attack_timer = 0.0
-        self.attack_cooldown_duration = 0.36
+        self.attack_cooldown_duration = PLAYER_ATTACK_COOLDOWN
         self.attack_cooldown_timer = 0.0
         self.attack_has_hit = False
         self.block_input_held = False

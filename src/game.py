@@ -276,6 +276,14 @@ class Game:
             warning = self.hud_font.render("GUARD BREAK", True, (255, 80, 60))
             self.screen.blit(warning, (margin, segment_y + segment_height + 6))
 
+        roll_text = "Q  ROLL READY"
+        roll_color = (120, 240, 150)
+        if self.player.roll_cooldown_timer > 0.0:
+            roll_text = f"Q  ROLL {self.player.roll_cooldown_timer:.1f}s"
+            roll_color = (170, 180, 185)
+        roll_label = self.hud_font.render(roll_text, True, roll_color)
+        self.screen.blit(roll_label, (margin, segment_y + segment_height + 8 + (24 if self.player.is_guard_broken else 0)))
+
     def _draw_guard_break_flash(self) -> None:
         """Draw a brief red screen flash after a vulnerable guard-break hit."""
         if self.guard_break_flash_timer <= 0.0:

@@ -6,6 +6,7 @@ import pygame
 from src.dummy import Dummy
 from src.player import DIRECTIONS
 from src.combat_config import PARRY_STUN_DURATION
+from src.combat_config import ENEMY_ATTACK_DURATION, ENEMY_ATTACK_INTERVAL
 
 
 class AttackingDummy(Dummy):
@@ -20,9 +21,9 @@ class AttackingDummy(Dummy):
         super().__init__(assets_directory, position, max_health)
         self.facing_direction = "west"
         self.attack_damage = 10
-        self.attack_duration = 0.24
+        self.attack_duration = ENEMY_ATTACK_DURATION
         self.attack_timer = 0.0
-        self.attack_interval = 1.0
+        self.attack_interval = ENEMY_ATTACK_INTERVAL
         self.attack_cooldown_timer = self.attack_interval
         self.attack_has_hit = False
         self.stun_timer = 0.0
