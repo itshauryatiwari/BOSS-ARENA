@@ -5,6 +5,7 @@ import pygame
 
 from src.dummy import Dummy
 from src.player import DIRECTIONS
+from src.combat_config import PARRY_STUN_DURATION
 
 
 class AttackingDummy(Dummy):
@@ -24,6 +25,8 @@ class AttackingDummy(Dummy):
         self.attack_interval = 1.0
         self.attack_cooldown_timer = self.attack_interval
         self.attack_has_hit = False
+        self.stun_timer = 0.0
+        self.stun_visual_timer = 0.0
         self.sword_hand_sprites = self._load_sword_hand_sprites(assets_directory)
         self.sword_swing_sprites = self._load_sword_swing_sprites(assets_directory)
 
@@ -90,6 +93,14 @@ class AttackingDummy(Dummy):
 
     def update(self, delta_time: float, target_position: pygame.Vector2) -> None:
         super().update(delta_time)
+        self.stun_timer = max(0.0, self.stun_timer - delta_time)
+        self.stun_visual_timer = max(0.0, self.stun_visual_timer - delta_time)
+        if self.stun_timer > 0.0:
+            self.attack_timer = 0.0
+            self.attack_cooldown_timer = max(self.attack_cooldown_timer, self.attack_interval)
+            self.attack_has_hit = True
+            return
+
         self._face_target(target_position)
         self.attack_timer = max(0.0, self.attack_timer - delta_time)
         self.attack_cooldown_timer = max(0.0, self.attack_cooldown_timer - delta_time)
@@ -98,6 +109,14 @@ class AttackingDummy(Dummy):
             self.attack_timer = self.attack_duration
             self.attack_cooldown_timer = self.attack_interval
             self.attack_has_hit = False
+
+    def apply_stun(self, duration: float = PARRY_STUN_DURATION) -> None:
+        """Interrupt the current attack and stun the dummy for the requested duration."""
+        self.stun_timer = max(self.stun_timer, duration)
+        self.stun_visual_timer = self.stun_timer
+        self.attack_timer = 0.0
+        self.attack_cooldown_timer = max(self.attack_cooldown_timer, self.attack_interval)
+        self.attack_has_hit = True
 
     def get_attack_arc(self) -> tuple[pygame.Vector2, float, float, float] | None:
         """Return the current sword arc as center, angle, reach, and half-width."""
@@ -126,6 +145,16 @@ class AttackingDummy(Dummy):
         super().draw(surface, camera)
         screen_position = camera.world_to_screen(self.position)
         zoom = camera.zoom
+
+        if self.stun_visual_timer > 0.0:
+            radius = max(4, round(6 * zoom))
+            pygame.draw.circle(
+                surface,
+                (255, 220, 70),
+                (round(screen_position.x), round(screen_position.y - 18 * zoom)),
+                radius,
+                max(1, round(2 * zoom)),
+            )
 
         if self.attack_timer > 0.0:
             elapsed_attack_time = self.attack_duration - self.attack_timer

@@ -7,6 +7,9 @@ import pygame
 
 from src.combat_config import (
     BLOCK_STAMINA_COST,
+    GUARD_BREAK_DAMAGE_MULTIPLIER,
+    GUARD_BREAK_DURATION,
+    GUARD_BREAK_RECOVERY_THRESHOLD,
     MAX_STAMINA,
     PARRY_STAMINA_REWARD,
     PARRY_WINDOW,
@@ -52,6 +55,7 @@ class Player:
         self.block_input_held = False
         self.parry_timer = 0.0
         self.parry_visual_timer = 0.0
+        self.guard_break_timer = 0.0
         self.roll_direction = pygame.Vector2(0, 0)
         self.roll_timer = 0.0
         self.roll_cooldown_timer = 0.0
@@ -218,7 +222,24 @@ class Player:
         if self.stamina < BLOCK_STAMINA_COST:
             return False
         self.stamina = max(0.0, self.stamina - BLOCK_STAMINA_COST)
+        if self.stamina <= 0.0:
+            self.trigger_guard_break()
         return True
+
+    def trigger_guard_break(self) -> None:
+        """Force the shield down and begin the temporary vulnerable state."""
+        self.stamina = 0.0
+        self.state = "GUARD_BROKEN"
+        self.guard_break_timer = GUARD_BREAK_DURATION
+        self.parry_timer = 0.0
+
+    @property
+    def is_guard_broken(self) -> bool:
+        return self.state == "GUARD_BROKEN"
+
+    @property
+    def guard_break_damage_multiplier(self) -> float:
+        return GUARD_BREAK_DAMAGE_MULTIPLIER if self.is_guard_broken else 1.0
 
     def register_parry(self) -> None:
         """Reward a successful parry and briefly show its visual feedback."""
@@ -329,7 +350,13 @@ class Player:
     def start_block(self) -> bool:
         """Enter the blocking state while the right mouse button is held."""
         self.block_input_held = True
-        if self.attack_timer > 0 or self.roll_timer > 0:
+        recovery_threshold = self.max_stamina * GUARD_BREAK_RECOVERY_THRESHOLD
+        if (
+            self.attack_timer > 0
+            or self.roll_timer > 0
+            or self.guard_break_timer > 0
+            or self.stamina <= recovery_threshold
+        ):
             return False
 
         self.state = "BLOCKING"
@@ -368,6 +395,7 @@ class Player:
         self.roll_cooldown_timer = max(0.0, self.roll_cooldown_timer - delta_time)
         self.parry_timer = max(0.0, self.parry_timer - delta_time)
         self.parry_visual_timer = max(0.0, self.parry_visual_timer - delta_time)
+        self.guard_break_timer = max(0.0, self.guard_break_timer - delta_time)
 
         if self.attack_timer == 0.0 and self.state == "ATTACKING":
             self.state = "BLOCKING" if self.block_input_held else "IDLE"
@@ -377,6 +405,12 @@ class Player:
         if self.roll_timer == 0.0 and self.state == "ROLLING":
             self.state = "BLOCKING" if self.block_input_held else "IDLE"
             if self.state == "BLOCKING":
+                self.parry_timer = PARRY_WINDOW
+
+        if self.state == "GUARD_BROKEN":
+            recovery_threshold = self.max_stamina * GUARD_BREAK_RECOVERY_THRESHOLD
+            if self.guard_break_timer == 0.0 and self.block_input_held and self.stamina > recovery_threshold:
+                self.state = "BLOCKING"
                 self.parry_timer = PARRY_WINDOW
 
     def update(self, delta_time: float, world_rect: pygame.Rect) -> None:

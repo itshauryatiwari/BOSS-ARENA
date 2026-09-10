@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pygame
 
+from src.combat_config import GUARD_BREAK_FLASH_DURATION
 from src.camera import Camera
 from src.attacking_dummy import AttackingDummy
 from src.damage_feedback import DamageFeedback
@@ -31,6 +32,7 @@ class Game:
         self.hud_font = pygame.font.Font(None, 28)
         self.damage_font = pygame.font.Font(None, 30)
         self.damage_feedback = DamageFeedback()
+        self.guard_break_flash_timer = 0.0
 
         self.project_directory = Path(__file__).resolve().parent.parent
         self.assets_directory = self.project_directory / "assets"
@@ -104,6 +106,7 @@ class Game:
         self.dummy.update(delta_time)
         self.attacking_dummy.update(delta_time, self.player.position)
         self.damage_feedback.update(delta_time)
+        self.guard_break_flash_timer = max(0.0, self.guard_break_flash_timer - delta_time)
         self._check_dummy_hit()
         self._check_attacking_dummy_hit()
         self.camera.update_shake(delta_time)
@@ -161,16 +164,22 @@ class Game:
             successful_parry = is_blocking_attack and self.player.is_parrying
             if successful_parry:
                 self.player.register_parry()
+                self.attacking_dummy.apply_stun()
                 self.camera.shake(duration=0.18, strength=5.0)
             else:
                 blocked_attack = is_blocking_attack and self.player.consume_block_stamina()
                 if blocked_attack:
                     self.attacking_dummy.attack_has_hit = True
                     return
-                dealt_damage = self.player.take_damage(self.attacking_dummy.attack_damage)
+                incoming_damage = round(
+                    self.attacking_dummy.attack_damage * self.player.guard_break_damage_multiplier
+                )
+                dealt_damage = self.player.take_damage(incoming_damage)
                 if dealt_damage > 0:
                     self.damage_feedback.add_damage(self.player.position, dealt_damage)
                     self.camera.shake(duration=0.14, strength=3.0)
+                    if self.player.is_guard_broken:
+                        self.guard_break_flash_timer = GUARD_BREAK_FLASH_DURATION
             self.attacking_dummy.attack_has_hit = True
 
     @staticmethod
@@ -210,6 +219,7 @@ class Game:
         if self.debug_collision_boxes:
             self._draw_debug_collision_boxes()
         self._draw_player_hud()
+        self._draw_guard_break_flash()
         pygame.display.flip()
 
     def _draw_player_hud(self) -> None:
@@ -261,6 +271,19 @@ class Game:
                 pygame.Rect(segment_rect.left, segment_rect.top, round(segment_rect.width * fill_ratio), segment_rect.height),
             )
             pygame.draw.rect(self.screen, (210, 235, 245), segment_rect, 1)
+
+        if self.player.is_guard_broken:
+            warning = self.hud_font.render("GUARD BREAK", True, (255, 80, 60))
+            self.screen.blit(warning, (margin, segment_y + segment_height + 6))
+
+    def _draw_guard_break_flash(self) -> None:
+        """Draw a brief red screen flash after a vulnerable guard-break hit."""
+        if self.guard_break_flash_timer <= 0.0:
+            return
+        alpha = round(110 * self.guard_break_flash_timer / GUARD_BREAK_FLASH_DURATION)
+        flash = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        flash.fill((210, 25, 25, max(0, min(110, alpha))))
+        self.screen.blit(flash, (0, 0))
 
     def _draw_debug_collision_boxes(self) -> None:
         """Draw collision geometry for player combat testing."""
