@@ -221,7 +221,7 @@ class Player:
 
     def consume_block_stamina(self) -> bool:
         """Spend stamina for one successfully blocked enemy swing."""
-        if self.stamina < BLOCK_STAMINA_COST:
+        if self.stamina <= 0.0:
             return False
         self.stamina = max(0.0, self.stamina - BLOCK_STAMINA_COST)
         if self.stamina <= 0.0:

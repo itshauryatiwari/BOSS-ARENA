@@ -168,7 +168,7 @@ class Game:
                 self.camera.shake(duration=0.18, strength=5.0)
             else:
                 blocked_attack = is_blocking_attack and self.player.consume_block_stamina()
-                if blocked_attack:
+                if blocked_attack and not self.player.is_guard_broken:
                     self.attacking_dummy.attack_has_hit = True
                     return
                 incoming_damage = round(
