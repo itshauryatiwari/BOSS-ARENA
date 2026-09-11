@@ -38,6 +38,7 @@ class Game:
         self.assets_directory = self.project_directory / "assets"
         self.floor_tile = self._load_floor_tile()
         self.heart_sprites = self._load_heart_sprites()
+        self.stamina_sprites = self._load_stamina_sprites()
 
         self.world_rect = pygame.Rect(0, 0, WORLD_SIZE[0], WORLD_SIZE[1])
         self.player = Player(
@@ -68,6 +69,21 @@ class Game:
             state: pygame.image.load(heart_directory / f"heart_{state}.png").convert_alpha()
             for state in ("full", "half", "empty")
         }
+
+    def _load_stamina_sprites(self) -> list[pygame.Surface]:
+        """Crop the ten 64x32 stamina states, ending with the guard-break frame."""
+        stamina_path = self.assets_directory / "ui" / "staminabar.png"
+        spritesheet = pygame.image.load(stamina_path).convert_alpha()
+        frame_width, frame_height = 64, 32
+        return [
+            pygame.transform.scale(
+                spritesheet.subsurface(
+                    pygame.Rect(0, row * frame_height, frame_width, frame_height)
+                ).copy(),
+                (frame_width * 4, frame_height * 4),
+            )
+            for row in range(spritesheet.get_height() // frame_height)
+        ]
 
     def run(self) -> None:
         while self.running:
@@ -250,27 +266,24 @@ class Game:
         stamina_label_y = heart_y + heart_size + 8
         self.screen.blit(stamina_label, (margin, stamina_label_y))
 
-        segment_y = stamina_label_y + stamina_label.get_height() + 4
-        segment_width = 56
-        segment_height = 12
-        segment_gap = 4
         stamina_ratio = 0.0
         if self.player.max_stamina > 0:
             stamina_ratio = max(0.0, min(1.0, self.player.stamina / self.player.max_stamina))
-        segment_count = max(1, round(self.player.max_stamina))
-        for segment_index in range(segment_count):
-            segment_x = margin + segment_index * (segment_width + segment_gap)
-            segment_rect = pygame.Rect(segment_x, segment_y, segment_width, segment_height)
-            segment_start = segment_index / segment_count
-            segment_end = (segment_index + 1) / segment_count
-            fill_ratio = max(0.0, min(1.0, (stamina_ratio - segment_start) / (segment_end - segment_start)))
-            pygame.draw.rect(self.screen, (32, 42, 52), segment_rect)
-            pygame.draw.rect(
-                self.screen,
-                (62, 170, 220),
-                pygame.Rect(segment_rect.left, segment_rect.top, round(segment_rect.width * fill_ratio), segment_rect.height),
+        if self.player.guard_break_sprite_timer > 0.0:
+            stamina_frame_index = len(self.stamina_sprites) - 1
+        elif stamina_ratio <= 0.0:
+            stamina_frame_index = len(self.stamina_sprites) - 1
+        else:
+            stamina_frame_index = min(
+                len(self.stamina_sprites) - 2,
+                round((1.0 - stamina_ratio) * (len(self.stamina_sprites) - 1)),
             )
-            pygame.draw.rect(self.screen, (210, 235, 245), segment_rect, 1)
+
+        stamina_sprite = self.stamina_sprites[stamina_frame_index]
+        stamina_position = (margin, stamina_label_y + stamina_label.get_height() + 4)
+        self.screen.blit(stamina_sprite, stamina_position)
+        segment_y = stamina_position[1]
+        segment_height = stamina_sprite.get_height()
 
         if self.player.is_guard_broken:
             warning = self.hud_font.render("GUARD BREAK", True, (255, 80, 60))

@@ -10,6 +10,7 @@ from src.combat_config import (
     GUARD_BREAK_DAMAGE_MULTIPLIER,
     GUARD_BREAK_DURATION,
     GUARD_BREAK_RECOVERY_THRESHOLD,
+    GUARD_BREAK_SPRITE_DURATION,
     MAX_STAMINA,
     PARRY_STAMINA_REWARD,
     PARRY_WINDOW,
@@ -58,6 +59,7 @@ class Player:
         self.parry_timer = 0.0
         self.parry_visual_timer = 0.0
         self.guard_break_timer = 0.0
+        self.guard_break_sprite_timer = 0.0
         self.roll_direction = pygame.Vector2(0, 0)
         self.roll_timer = 0.0
         self.roll_cooldown_timer = 0.0
@@ -73,6 +75,7 @@ class Player:
         self.sword_swing_sprites = self._load_sword_swing_sprites(assets_directory)
         self.shield_sprites = self._load_shield_sprites(assets_directory)
         self.parry_sprites = self._load_parry_sprites(assets_directory)
+        self.roll_sprites = self._load_roll_sprites(assets_directory)
 
     def _load_directional_sprites(self, assets_directory: Path) -> dict[str, pygame.Surface]:
         """Crop the eight 32x32 directional frames from the handless spritesheet."""
@@ -166,6 +169,24 @@ class Player:
             parry_sprites[direction] = spritesheet.subsurface(frame_rect).copy()
         return parry_sprites
 
+    def _load_roll_sprites(self, assets_directory: Path) -> dict[str, list[pygame.Surface]]:
+        """Crop four 32x32 rolling frames for each of the eight directions."""
+        spritesheet_path = assets_directory / "player" / "roll.png"
+        spritesheet = pygame.image.load(spritesheet_path).convert_alpha()
+        frame_size = 32
+        roll_sprites: dict[str, list[pygame.Surface]] = {}
+        for row, direction in enumerate(DIRECTIONS):
+            roll_sprites[direction] = []
+            for column in range(4):
+                frame_rect = pygame.Rect(
+                    column * frame_size,
+                    row * frame_size,
+                    frame_size,
+                    frame_size,
+                )
+                roll_sprites[direction].append(spritesheet.subsurface(frame_rect).copy())
+        return roll_sprites
+
     def _load_sword_hand_sprites(self, assets_directory: Path) -> dict[str, pygame.Surface]:
         """Crop the 3-3-2 sword-hands sheet in the agreed direction order."""
         spritesheet_path = assets_directory / "player" / "sword_hands_sheet.png"
@@ -233,6 +254,7 @@ class Player:
         self.stamina = 0.0
         self.state = "GUARD_BROKEN"
         self.guard_break_timer = GUARD_BREAK_DURATION
+        self.guard_break_sprite_timer = GUARD_BREAK_SPRITE_DURATION
         self.parry_timer = 0.0
 
     @property
@@ -255,7 +277,7 @@ class Player:
 
     def update_stamina(self, delta_time: float) -> None:
         """Regenerate stamina naturally whenever the shield is not raised."""
-        if self.state != "BLOCKING":
+        if self.state != "BLOCKING" or self.is_guard_broken:
             self.stamina = min(
                 self.max_stamina,
                 self.stamina + STAMINA_REGEN_RATE * delta_time,
@@ -398,6 +420,7 @@ class Player:
         self.parry_timer = max(0.0, self.parry_timer - delta_time)
         self.parry_visual_timer = max(0.0, self.parry_visual_timer - delta_time)
         self.guard_break_timer = max(0.0, self.guard_break_timer - delta_time)
+        self.guard_break_sprite_timer = max(0.0, self.guard_break_sprite_timer - delta_time)
 
         if self.attack_timer == 0.0 and self.state == "ATTACKING":
             self.state = "BLOCKING" if self.block_input_held else "IDLE"
@@ -460,7 +483,11 @@ class Player:
 
         zoom = camera.zoom
 
-        if self.is_moving:
+        if self.state == "ROLLING":
+            roll_progress = 1.0 - self.roll_timer / ROLL_DURATION
+            roll_frame_index = min(3, max(0, int(roll_progress * 4)))
+            sprite = self.roll_sprites[self.facing_direction][roll_frame_index]
+        elif self.is_moving:
             sprite = self.walking_sprites[self.facing_direction][self.walk_frame_index]
         else:
             sprite = self.sprites[self.facing_direction]
@@ -492,7 +519,7 @@ class Player:
                 scaled_sword_swing,
                 (round(swing_position.x), round(swing_position.y)),
             )
-        elif self.state != "BLOCKING":
+        elif self.state not in ("BLOCKING", "ROLLING"):
             sword_hands = self.sword_hand_sprites[self.facing_direction]
             sword_hands = self._apply_hurt_flash(sword_hands)
             scaled_sword_hands = pygame.transform.scale(
